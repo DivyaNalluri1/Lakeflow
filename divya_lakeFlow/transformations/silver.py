@@ -1,3 +1,20 @@
+# ==============================================================
+# SILVER LAYER - CLEANED & ENRICHED DATA
+# --------------------------------------------------------------
+# This layer takes raw Bronze streaming data and:
+# Removes rescued data columns (system-captured invalid fields).
+# Renames ingestion timestamps for clarity.
+# Deduplicates records based on primary keys (customer_id / trip_id).
+# Filters out null IDs to ensure data quality.
+# Joins customers and trips to enrich trip data with customer details.
+#  Adds a "full_name" column using a reusable UDF from utilities.py.
+#
+# Write mode in DLT:
+# - silver_customers / silver_trips: append + update (merge) due to deduplication.
+# - silver_trips_enriched: append + update (merge) because it depends on Silver sources.
+
+
+
 import dlt
 from pyspark.sql.functions import col
 from utilities import utils # import the udf
