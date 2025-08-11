@@ -1,0 +1,84 @@
+!pip install faker
+from pyspark.sql.functions import lit
+from faker import Faker
+import pandas as pd
+import time
+import random
+import os
+
+fake = Faker()
+
+# Base path for streaming output (Parquet format)
+customer_output_path = "/Volumes/lakeflow/divya/volume/raw/customer/"
+trip_output_path = "/Volumes/lakeflow/divya/volume/raw/trips/"
+
+# Create directories if they don't exist
+os.makedirs(customer_output_path, exist_ok=True)
+os.makedirs(trip_output_path, exist_ok=True)
+
+# Sequential IDs
+customer_id_counter = 1
+trip_id_counter = 1
+
+# Total customers to keep in memory for linking trips
+customer_ids = []
+
+# Function to generate customer data
+def generate_customer_data(n):
+    global customer_id_counter
+    data = []
+    for _ in range(n):
+        data.append({
+            "customer_id": customer_id_counter,
+            "first_name": fake.first_name(),
+            "last_name": fake.last_name(),
+            "phone_no": fake.phone_number(),
+            "email": fake.email(),
+            "gender": random.choice(["Male", "Female", "Other"]),
+            "city": fake.city()
+        })
+        customer_ids.append(customer_id_counter)
+        customer_id_counter += 1
+    return pd.DataFrame(data)
+
+# Function to generate trip data
+def generate_trip_data(n):
+    global trip_id_counter
+    data = []
+    for _ in range(n):
+        if not customer_ids:  # Ensure we have at least 1 customer
+            continue
+        cust_id = random.choice(customer_ids)
+        pickup_time = fake.date_time_between(start_date='-30d', end_date='now')
+        dropoff_time = pickup_time + pd.Timedelta(minutes=random.randint(5, 120))
+        data.append({
+            "trip_id": trip_id_counter,
+            "customer_id": cust_id,
+            "pickup_time": pickup_time,
+            "dropoff_time": dropoff_time,
+            "pickup_location": fake.city(),
+            "dropoff_location": fake.city(),
+            "fare_amount": round(random.uniform(50, 500), 2)
+        })
+        trip_id_counter += 1
+    return pd.DataFrame(data)
+
+# Simulate streaming
+while True:
+    # Generate random batch sizes
+    cust_batch_size = random.randint(1, 3)  # Customers per batch
+    trip_batch_size = random.randint(2, 5)  # Trips per batch
+    
+    # Generate and write customers
+    customer_df = generate_customer_data(cust_batch_size)
+    if not customer_df.empty:
+        spark.createDataFrame(customer_df).write.mode("append").parquet(customer_output_path)
+        print(f"Generated {cust_batch_size} customers.")
+    
+    # Generate and write trips
+    trip_df = generate_trip_data(trip_batch_size)
+    if not trip_df.empty:
+        spark.createDataFrame(trip_df).write.mode("append").parquet(trip_output_path)
+        print(f"Generated {trip_batch_size} trips.")
+    
+    time.sleep(5)  # Pause before next batch
